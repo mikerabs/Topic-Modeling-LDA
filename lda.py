@@ -150,7 +150,7 @@ class LdaTopicCounts:
         """
         Change the topic count associated with a word in the topic
         """
-        
+
         self._finalized = True
 
         self._topic_term[topic][word] += delta
@@ -276,28 +276,68 @@ class Sampler:
         Change the topic of a token in a document.  Update the counts
         appropriately.  -1 is used to denote "unassigning" the word from a topic.
         """
+        #this means the token in a document already has a topic, we are switching out the old topic for new topic, and are adjusting the counts that keep track of this data
+
+        #this should return a dictionary that provides the conditional distribution of a token
         assert doc in self._doc_tokens, "Could not find document %i" % doc
+        
+        #this asserts that index is referring to a word within doc and it is definitely within the range of the doc we're looking at
         assert index < len(self._doc_tokens[doc]), \
             "Index %i out of range for doc %i (max: %i)" % \
             (index, doc, len(self._doc_tokens[doc]))
+        
+        #this chooses the term's token we're looking at 
         term = self._doc_tokens[doc][index]
         alpha = self._alpha
+
         assert index < len(self._doc_assign[doc]), \
                "Bad index %i for document %i, term %i %s" % \
                (index, doc, term, str(self._doc_assign[doc]))
+        
+        #the old topic     
         old_topic = self._doc_assign[doc][index]
+        #when old_topic is assigned to -1, the other if statement goes.  This means when we unassign something we replace it with -1 AT THAT INDEX
 
-        if old_topic != -1:
-            assert new_topic == -1
+        if old_topic != -1:#If the old topic is ASSIGNED
+            assert new_topic == -1#this means the newtopic is UNASSIGNED?
             
             # TODO: Add code here to keep track of the counts and
             # assignments
+            
+            #removing the OLD
+            #we should remove the old topic doc_assign[doc_id]
+            self._doc_assign[doc].pop(index)
+            #maybe add -1s to doc_assign?  we need that length to stay the same
+            self._doc_assign[doc].insert(index,new_topic)
 
-        if new_topic != -1:
-            assert old_topic == -1
+            #we should subtract 1 from doc_counts[doc_id][old_topic]
+            self._doc_counts[doc][old_topic] -= 1
+
+            #we should use change_count in _topics with delta = -1 to account for removed topic relation to word
+            self._topics.change_count(old_topic,term,-1)
+
+            
+
+        #reset new_topic to not -1?    
+
+        if new_topic != -1:#If the new topic is ASSIGNED
+            assert old_topic == -1#the old_topic is UNASSIGNED AT THAT POSITION
 
             # TODO: Add code here to keep track of the counts and
             # assignments
+
+            #WE MUST REPLACE THE -1 WITH NEW_TOPIC
+
+            #remove the -1 from that position in doc_assign
+            self._doc_assign[doc].pop(index)
+            #we should add the new topic to doc_assign[doc_id]
+            self._doc_assign[doc].insert(index,new_topic)
+
+            #we should add 1 to doc_counts[doc_id][new_topic]
+            self._doc_counts[doc][new_topic] +=1
+
+            #we should use _topics.initialize(word, new topic) to add one to our topics object 
+            self._topics.initialize(term, new_topic)
 
     def run_sampler(self, iterations = 100):
         """
@@ -351,15 +391,30 @@ class Sampler:
         """
         Create a dictionary storing the conditional probability of this token being assigned to each topic.
         """
+        #count of this token assigned to one topic/total count of token assigned to all topics
         assert self._doc_assign[doc_id][index] == -1, \
           "Sampling doesn't make sense if this hasn't been unassigned."
         sample_probs = {}
-        term = self._doc_tokens[doc_id][index]
+        term = self._doc_tokens[doc_id][index]#the word
+        
+        totalCountAllTopics = 0
         for kk in range(self._num_topics):
+            if kk in self._doc_counts[doc_id].keys():
+                totalCountAllTopics += self._doc_counts[doc_id][kk]
+
+        for kk in range(self._num_topics):#looping through topic ID#s
 
             # TODO: Compute the conditional probability of
             # sampling a topic; at the moment it's just the
             # uniform probability.
+
+            #if the topic is accounted for within the doc
+            if kk in self._doc_counts[doc_id].keys():
+                sample_probs[kk] = self._doc_counts[doc_id][kk]/totalCountAllTopics
+
+            else:#if the current topic was not found in the doc
+                sample_probs[kk] = 0.0
+
             sample_probs[kk] = 1.0 / float(self._num_topics)
 
         return sample_probs
@@ -461,6 +516,7 @@ if __name__ == "__main__":
     # Initialize the documents
     vocab = vocab_scanner.vocab(args.vocab_size)
     print(len(vocab), vocab[:10]) 
+
     lda = Sampler(args.num_topics, vocab)
     for ii in files:
         lda.add_doc(tokenize_file(ii), vocab)
