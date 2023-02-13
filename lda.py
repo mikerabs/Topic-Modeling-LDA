@@ -316,6 +316,10 @@ class Sampler:
             #we should use change_count in _topics with delta = -1 to account for removed topic relation to word
             self._topics.change_count(old_topic,term,-1)
 
+            #subtract from sample stats
+            if self._sample_stats[old_topic] != 0:
+                self._sample_stats[old_topic] -= 1
+
             
 
         #reset new_topic to not -1?    
@@ -338,6 +342,10 @@ class Sampler:
 
             #we should use _topics.initialize(word, new topic) to add one to our topics object 
             self._topics.initialize(term, new_topic)
+
+            #add to sample stats
+            self._sample_stats[new_topic] += 1
+
 
     def run_sampler(self, iterations = 100):
         """
@@ -396,27 +404,39 @@ class Sampler:
           "Sampling doesn't make sense if this hasn't been unassigned."
         sample_probs = {}
         term = self._doc_tokens[doc_id][index]#the word
-        
+        '''
         totalCountAllTopics = 0
         for kk in range(self._num_topics):
             if kk in self._doc_counts[doc_id].keys():
                 totalCountAllTopics += self._doc_counts[doc_id][kk]
-
+'''
         for kk in range(self._num_topics):#looping through topic ID#s
 
             # TODO: Compute the conditional probability of
             # sampling a topic; at the moment it's just the
             # uniform probability.
 
-            #if the topic is accounted for within the doc
-            if kk in self._doc_counts[doc_id].keys():
-                sample_probs[kk] = self._doc_counts[doc_id][kk]/totalCountAllTopics
+            #conditional prob token for each topic = #times token appears in doc * #times topic assigned to token
 
-            else:#if the current topic was not found in the doc
-                sample_probs[kk] = 0.0
 
-            sample_probs[kk] = 1.0 / float(self._num_topics)
+            countTopicInDoc = self._doc_counts[doc_id][kk]+self._alpha[kk] #/countTopicsInDoc#/need for loop -> len(self._doc_counts[doc_id])
+    
+            
+            countTopicsInDoc = len(self._doc_assign[doc_id])-1#due to the -1
 
+            countTopicInDoc /= (countTopicsInDoc*2)
+
+
+            countTokenToTopic = self._topics.word_in_topic(kk,term)
+
+            conditonalWeight = countTopicInDoc * countTokenToTopic
+
+            sample_probs[kk] = conditonalWeight 
+
+            #sample_probs[kk] = 1.0 / float(self._num_topics)
+
+
+            
         return sample_probs
         
 
